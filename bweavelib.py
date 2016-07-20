@@ -1,6 +1,8 @@
 import numpy as np
+import scipy.special as sps
+
 # delete pylab for production use, this is just for debugging - 
-import pylab as pyl
+#import pylab as pyl
 
 def mad(data, axis=None):
     return np.mean(np.absolute(data - np.mean(data, axis)), axis)
@@ -187,6 +189,25 @@ def getcrossings(xx,yy,scan,scaninfo):
 
 	return xinfo
 
+def weavebasket(xinfo, npoly=0):
+	"""
+	Make design matrix of the problem given information in "xinfo" dictionary
+	"""
+	nscans=xinfo['scans'].size
+	nix=xinfo['nx']
+	nterms=npoly+1
+	# NB - swapping R&C relative to IDL->
+	basket=np.zeros([nix,nscans*nterms])
+	for i in np.arange(nix):
+		for j in np.arange(nterms):
+			basket[i,xinfo['rint'][i]*nterms+j] = 1.0*sps.eval_legendre(j,xinfo['rtx'][i])
+			basket[i,xinfo['cint'][i]*nterms+j] = -1.0*sps.eval_legendre(j,xinfo['ctx'][i])
+			# translation -
+			#  design_matrix[ scan & term index, intersection ] = +/- legendre_value(order j , time_at_crossing)
+			#  + or - determined by whether it's a row or a column. rows by fiat are +ve in the model. 
+			#  (that is determined by makedeltavec(), which does rowdata - columndata)
+	return basket
+
 def makedeltavec(scan,time,xx,yy,data,data_wt,xinfo):
 	"""
 	note time is assumed in seconds already ... if that matters.
@@ -197,7 +218,7 @@ def makedeltavec(scan,time,xx,yy,data,data_wt,xinfo):
 	ww=np.zeros(0)
 
 	for i in np.arange(nx):
-		if ((i % 50 ) == 0):
+		if ((i % 1000 ) == 0):
 			print i
 		rowind= (scan == xinfo['rint'][i])
 		colind= (scan == xinfo['cint'][i])
