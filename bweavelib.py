@@ -261,3 +261,11 @@ def makedeltavec(scan,time,xx,yy,data,data_wt,xinfo):
 	delta_vec = {'delta': dd, 'wt': ww}
 
 	return delta_vec
+
+def subtract_mode_from_data(scan,data,time,a,model=False):
+	"""
+	INPUT: scan,data,time - arrays 
+	   	   a - fitted model parameters (npoly x nscans)
+	       model = T/F - if T return only model not data-model (default False)
+	       	   - at present not implemented **it always returns only the model**
+	"""
