@@ -53,18 +53,22 @@ if process_rank == 0:
 	data_file = my_file + '.' + my_obj+ '.stokes' + np.str(my_stokes) +'.npy'
 	n_good_rows = zz.shape[0]
 	n_spec_chans = data.shape[1]
+	# open output file that will contain the selected data -
 	fp = np.memmap(data_file, dtype=data.dtype, mode='w+', shape=(n_good_rows,n_spec_chans))
 	for i in range(n_good_rows):
 		fp[i,:] = data[zz[i],:]
 	# flush buffer & close the file -
 	del fp	
 
+	# set bogus weight here
+	#  it needs to be a file b/c in general, that's what will happen.
+
 	xx=xx[all_ind]
 	yy=yy[all_ind]
 	time=time[all_ind]
 	scan=scan[all_ind]		
-	nchan= data.shape[1]
-	data=data[all_ind,:]
+	#nchan= data.shape[1]
+	#data=data[all_ind,:]
 
 	bw.assignscanids(scan)
 	scaninfo=bw.classifyscans(scan,xx,yy)
@@ -86,11 +90,22 @@ if process_rank == 0:
 	#  nchunks * chans_per_chunk
 	deltas=np.zeros([xinfo['nx'],nchunks*chans_per_chunk])
 
+	# if it doesn't exist ... make it now -- NO THIS SHOULD BE OF SIZE XINFO I THINK...
+	data_wt = np.ones(xinfo['nx'])
+
+	# the design matrix -
 	alpha = bw.weavebasket(xinfo)
+	# the square of the design matrix - 
+	a2=np.dot(alpha.transpose() , np.dot( np.diag(data_wt),alpha))
+	# the thing that needs to be inverted --  (A^T W A + lam I) - 
+	a3 = a2 + lam * np.trace(a2)/a2.shape[0] * np.identity(a2.shape[0])	
+	# the full solution operator ... solution C = sol_op * delta_vec - 
+	sol_op = np.dot(np.dot(np.linalg.inv(a3), alpha.transpose()),  np.diag(data_wt))
+
 	for i in range(nchunks):
 		my_info = {'scaninfo': scaninfo, 'xinfo': xinfo, 'data_file': data_file,'which_chunk':i,
 			'n_good_rows':n_good_rows,'n_spec_chans':n_spec_chans,'data_type': data.dtype,
- 			'scan': scan, 'time': time, 'xx': xx, 'yy': yy, 'alpha': alpha}
+ 			'scan': scan, 'time': time, 'xx': xx, 'yy': yy, 'alpha': alpha,'sol_op': sol_op}
 	 	#my_info = {'scaninfo': scaninfo, 'xinfo': xinfo, 'data': data[:,(np.arange(chans_per_chunk)+chans_per_chunk*i)],
  		#	'scan': scan, 'time': time, 'xx': xx, 'yy': yy, 'alpha': alpha}
  		print 'SENDING INFO'
@@ -143,11 +158,8 @@ if process_rank > 0:
 		# save deltas - 
 		all_deltas[:,my_info['which_chunk']*chans_per_chunk+j]=deltas['delta']
 		# solve! ->
-		a2=np.dot( my_info['alpha'].transpose() , my_info['alpha'])
-		# regularized version - 
-		# a3 = a2 + lambda * matrix_scale * identity()
-		a3 = a2 + lam * np.trace(a2)/a2.shape[0] * np.identity(a2.shape[0])
-		sol_par = np.dot(np.dot(np.linalg.inv(a3), my_info['alpha'].transpose()),deltas['delta'])
+		# this is where the weights will come in - 
+		sol_par = np.dot(my_info['sol_op'],deltas['delta'])
 		# save delta mod
 		all_delta_mod[:,my_info['which_chunk']*chans_per_chunk+j] = np.dot(my_info['alpha'],sol_par)		
 		# save data model
